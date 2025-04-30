@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#111827">
+    <meta name="description" content="Aplikasi presensi siswa modern dengan pemindaian QR Code">
+    <title>Presensi Siswa PGRI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%2310B981' d='M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-1-9h2v6h-2zm0-4h2v2h-2z'/></svg>">
+    <style>
+        :root {
+            --primary: #10B981;
+            --primary-dark: #059669;
+            --secondary: #8B5CF6;
+            --accent: #F59E0B;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #F9FAFB;
+        }
+
+        #reader {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+            position: relative;
+            border: 2px solid var(--primary);
+        }
+
+        .scan-overlay::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 320px;
+            height: 320px;
+            transform: translate(-50%, -50%);
+            border: 5px dashed var(--primary);
+            border-radius: 24px;
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+        }
+
+        .success-flash {
+            animation: success-flash 0.6s ease;
+        }
+
+        @keyframes success-flash {
+            0% { background-color: rgba(16, 185, 129, 0); }
+            50% { background-color: rgba(16, 185, 129, 0.4); }
+            100% { background-color: rgba(16, 185, 129, 0); }
+        }
+
+        .error-flash {
+            animation: error-flash 0.6s ease;
+        }
+
+        @keyframes error-flash {
+            0% { background-color: rgba(239, 68, 68, 0); }
+            50% { background-color: rgba(239, 68, 68, 0.4); }
+            100% { background-color: rgba(239, 68, 68, 0); }
+        }
+
+        .attendance-item {
+            transition: transform 0.3s ease, background-color 0.3s ease;
+            border-radius: 12px;
+        }
+
+        .attendance-item:hover {
+            transform: translateY(-4px);
+            background-color: rgba(55, 65, 81, 0.95);
+        }
+
+        .custom-btn {
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .custom-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .custom-btn:active {
+            transform: translateY(0);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.6s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .analytics-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-radius: 16px;
+        }
+
+        .analytics-card:hover {
+            transform: scale(1.04);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+        }
+
+        @media (max-width: 640px) {
+            #reader {
+                max-width: 100%;
+            }
+
+            #reader video {
+                max-height: 400px;
+            }
+
+            .scan-overlay::before {
+                width: 260px;
+                height: 260px;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="container mx-auto px-4 py-12 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-12 text-center">
+            <h1 class="text-5xl font-extrabold tracking-tight">Presensi Siswa PGRI</h1>
+            <p class="text-gray-300 mt-2 text-lg">Solusi presensi cerdas untuk pendidikan modern</p>
+        </header>
+
+        <!-- Scanner Section -->
+        <section class="bg-gray-800 rounded-3xl shadow-2xl p-10 mb-12 fade-in">
+            <div class="scan-overlay relative">
+                <div id="reader" role="region" aria-label="Pemindai QR Code"></div>
+            </div>
+            <div id="scanStatus" class="mt-8 text-center hidden p-6 rounded-2xl shadow-lg" role="alert"></div>
+            <div class="flex justify-center gap-4 mt-8 flex-wrap">
+                <button id="switchCamera" class="custom-btn px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700" aria-label="Ganti kamera">Ganti Kamera</button>
+                <button id="zoomIn" class="custom-btn px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700" aria-label="Perbesar">Zoom In</button>
+                <button id="zoomOut" class="custom-btn px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700" aria-label="Perkecil">Zoom Out</button>
+                <button id="exportBtn" class="custom-btn px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700" aria-label="Ekspor data">Ekspor Data</button>
+                <button id="syncBtn" class="custom-btn px-6 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700" aria-label="Sinkronkan data">Sinkronkan</button>
+            </div>
+        </section>
+
+        <!-- Analytics Section -->
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            <div class="analytics-card bg-gray-800 rounded-3xl shadow-xl p-8 text-center fade-in">
+                <h3 class="text-xl font-semibold text-white">Total Hadir</h3>
+                <p id="totalAttendance" class="text-4xl font-bold text-green-500 mt-3">0</p>
+            </div>
+            <div class="analytics-card bg-gray-800 rounded-3xl shadow-xl p-8 text-center fade-in">
+                <h3 class="text-xl font-semibold text-white">Scan Hari Ini</h3>
+                <p id="todayScans" class="text-4xl font-bold text-blue-500 mt-3">0</p>
+            </div>
+            <div class="analytics-card bg-gray-800 rounded-3xl shadow-xl p-8 text-center fade-in">
+                <h3 class="text-xl font-semibold text-white">Waktu Terakhir</h3>
+                <p id="lastScan" class="text-4xl font-bold text-purple-500 mt-3">-</p>
+            </div>
+        </section>
+
+        <!-- Chart Section -->
+        <section class="bg-gray-800 rounded-3xl shadow-xl p-10 mb-12 fade-in">
+            <h2 class="text-2xl font-bold text-white mb-6">Statistik Kehadiran</h2>
+            <canvas id="attendanceChart" class="max-w-full"></canvas>
+        </section>
+
+        <!-- Attendance List Section -->
+        <section class="bg-gray-800 rounded-3xl shadow-xl p-10 fade-in">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-3xl font-bold text-white">Daftar Kehadiran</h2>
+                <button id="resetBtn" class="custom-btn px-6 py-3 bg-red-900 text-red-200 rounded-xl hover:bg-red-800" aria-label="Reset data presensi">Reset Data</button>
+            </div>
+            <div class="mb-8 relative">
+                <input type="text" id="searchInput" placeholder="Cari nama siswa..." 
+                       class="w-full p-5 pl-14 border border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-gray-700 text-white placeholder-gray-400"
+                       aria-label="Cari siswa">
+                <svg class="absolute left-5 top-5 h-6 w-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+            <div id="attendanceListContainer" class="max-h-[700px] overflow-y-auto rounded-xl border border-gray-600">
+                <ul id="attendanceList" class="divide-y divide-gray-600" role="list">
+                    <li class="py-10 text-center text-gray-400" id="emptyMessage">Belum ada siswa yang tercatat</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <!-- Audio Feedback -->
+    <audio id="successSound" src="./beep.mp3" preload="auto"></audio>
+    <audio id="errorSound" src="./beep.mp3" preload="auto"></audio>
+
+    <script type="module">
+        // Constants
+        const STORAGE_KEY = 'attendance_elite';
+        const QR_CONFIG = { fps: 20, qrbox: { width: 320, height: 320 } };
+        const TEXTS = {
+            title: 'Presensi Siswa Elite',
+            subtitle: 'Solusi presensi cerdas untuk pendidikan modern',
+            scanSuccess: 'Presensi {id} berhasil!',
+            scanError: 'Siswa {id} sudah tercatat!',
+            resetSuccess: 'Data presensi telah direset!',
+            cameraError: 'Gagal mengakses kamera. Pastikan izin kamera telah diberikan.',
+            syncSuccess: 'Data berhasil disinkronkan!',
+            syncError: 'Gagal menyinkronkan data.',
+            exportError: 'Format ekspor tidak valid.',
+            searchPlaceholder: 'Cari nama siswa...',
+            totalAttendance: 'Total Hadir',
+            todayScans: 'Scan Hari Ini',
+            lastScan: 'Waktu Terakhir',
+            attendanceList: 'Daftar Kehadiran',
+            resetBtn: 'Reset Data',
+            switchCamera: 'Ganti Kamera',
+            zoomIn: 'Perbesar',
+            zoomOut: 'Perkecil',
+            exportBtn: 'Ekspor Data',
+            syncBtn: 'Sinkronkan'
+        };
+
+        // Utility Functions
+        /**
+         * Formats a date to a localized string
+         * @param {Date} date - Date to format
+         * @returns {string} Formatted date string
+         */
+        const formatDateTime = (date) => date.toLocaleString('id-ID', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        /**
+         * Downloads content as a file
+         * @param {string} content - File content
+         * @param {string} fileName - Output file name
+         * @param {string} type - MIME type
+         */
+        const downloadFile = (content, fileName, type) => {
+            const blob = new Blob([content], { type });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        };
+
+        /**
+         * Debounces a function
+         * @param {Function} func - Function to debounce
+         * @param {number} wait - Wait time in ms
+         * @returns {Function} Debounced function
+         */
+        const debounce = (func, wait) => {
+            let timeout;
+            return (...args) => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func(...args), wait);
+            };
+        };
+
+        // Storage Module
+        class Storage {
+            /**
+             * Loads attendance data from localStorage
+             * @returns {Array} Attendance records
+             */
+            static load() {
+                try {
+                    const stored = localStorage.getItem(STORAGE_KEY);
+                    return stored ? JSON.parse(stored) : [];
+                } catch (error) {
+                    console.error('Gagal memuat data presensi:', error);
+                    return [];
+                }
+            }
+
+            /**
+             * Saves attendance data to localStorage
+             * @param {Array} data - Attendance records
+             */
+            static save(data) {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                } catch (error) {
+                    console.error('Gagal menyimpan data presensi:', error);
+                }
+            }
+        }
+
+        // Chart Module
+        class AttendanceChart {
+            /**
+             * Initializes the attendance chart
+             * @param {HTMLCanvasElement} canvas - Chart canvas element
+             */
+            constructor(canvas) {
+                this.ctx = canvas.getContext('2d');
+                this.chart = null;
+            }
+
+            /**
+             * Updates the chart with attendance data
+             * @param {Array} attendance - Attendance records
+             */
+            update(attendance) {
+                const dates = [...new Set(attendance.map(s => s.time.split(' ')[0]))];
+                const counts = dates.map(date => 
+                    attendance.filter(s => s.time.startsWith(date)).length
+                );
+
+                if (this.chart) {
+                    this.chart.destroy();
+                }
+
+                this.chart = new Chart(this.ctx, {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: [{
+                            label: 'Kehadiran Harian',
+                            data: counts,
+                            borderColor: '#10B981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.3)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: { 
+                                beginAtZero: true, 
+                                title: { display: true, text: 'Jumlah Siswa', color: '#F9FAFB' },
+                                ticks: { color: '#D1D5DB' }
+                            },
+                            x: { 
+                                title: { display: true, text: 'Tanggal', color: '#F9FAFB' },
+                                ticks: { color: '#D1D5DB' }
+                            }
+                        },
+                        plugins: {
+                            legend: { 
+                                position: 'top',
+                                labels: { color: '#F9FAFB' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Main Application Class
+        class AttendanceApp {
+            /**
+             * @typedef {Object} Student
+             * @property {string} id - Student ID
+             * @property {string} time - Attendance timestamp
+             * @property {string} status - Attendance status
+             */
+
+            /**
+             * Initializes the attendance application
+             */
+            constructor() {
+                this.elements = {
+                    reader: document.getElementById('reader'),
+                    scanStatus: document.getElementById('scanStatus'),
+                    attendanceList: document.getElementById('attendanceList'),
+                    emptyMessage: document.getElementById('emptyMessage'),
+                    totalAttendance: document.getElementById('totalAttendance'),
+                    todayScans: document.getElementById('todayScans'),
+                    lastScan: document.getElementById('lastScan'),
+                    resetBtn: document.getElementById('resetBtn'),
+                    searchInput: document.getElementById('searchInput'),
+                    switchCamera: document.getElementById('switchCamera'),
+                    zoomIn: document.getElementById('zoomIn'),
+                    zoomOut: document.getElementById('zoomOut'),
+                    exportBtn: document.getElementById('exportBtn'),
+                    syncBtn: document.getElementById('syncBtn'),
+                    successSound: document.getElementById('successSound'),
+                    errorSound: document.getElementById('errorSound'),
+                    chartCanvas: document.getElementById('attendanceChart')
+                };
+
+                /** @type {Student[]} */
+                this.attendance = Storage.load();
+                this.html5QrCode = new Html5Qrcode('reader');
+                this.currentCamera = 'environment';
+                this.zoomLevel = 1;
+                this.isOnline = navigator.onLine;
+                this.chart = new AttendanceChart(this.elements.chartCanvas);
+                this.init();
+            }
+
+            /**
+             * Initializes the application
+             * @returns {Promise<void>}
+             */
+            async init() {
+                this.bindEvents();
+                await this.startScanner();
+                this.loadAttendance();
+                this.updateUI();
+                this.chart.update(this.attendance);
+
+                // Register service worker
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/service-worker.js')
+                        .then(reg => console.log('Service Worker terdaftar:', reg))
+                        .catch(err => console.error('Gagal mendaftarkan Service Worker:', err));
+                }
+            }
+
+            /**
+             * Binds event listeners
+             */
+            bindEvents() {
+                this.elements.resetBtn.addEventListener('click', () => this.resetAttendance());
+                this.elements.searchInput.addEventListener('input', debounce(() => this.loadAttendance(), 300));
+                this.elements.switchCamera.addEventListener('click', () => this.switchCamera());
+                this.elements.zoomIn.addEventListener('click', () => this.adjustZoom(0.1));
+                this.elements.zoomOut.addEventListener('click', () => this.adjustZoom(-0.1));
+                this.elements.exportBtn.addEventListener('click', () => this.showExportOptions());
+                this.elements.syncBtn.addEventListener('click', () => this.syncData());
+                window.addEventListener('online', () => this.isOnline = true);
+                window.addEventListener('offline', () => this.isOnline = false);
+            }
+
+            /**
+             * Updates UI with text constants
+             */
+            updateUI() {
+                document.title = TEXTS.title;
+                document.querySelector('h1').textContent = TEXTS.title;
+                document.querySelector('header p').textContent = TEXTS.subtitle;
+                this.elements.searchInput.placeholder = TEXTS.searchPlaceholder;
+                this.elements.resetBtn.textContent = TEXTS.resetBtn;
+                this.elements.switchCamera.textContent = TEXTS.switchCamera;
+                this.elements.zoomIn.textContent = TEXTS.zoomIn;
+                this.elements.zoomOut.textContent = TEXTS.zoomOut;
+                this.elements.exportBtn.textContent = TEXTS.exportBtn;
+                this.elements.syncBtn.textContent = TEXTS.syncBtn;
+                document.querySelectorAll('.analytics-card h3')[0].textContent = TEXTS.totalAttendance;
+                document.querySelectorAll('.analytics-card h3')[1].textContent = TEXTS.todayScans;
+                document.querySelectorAll('.analytics-card h3')[2].textContent = TEXTS.lastScan;
+                document.querySelector('section:nth-of-type(3) h2').textContent = TEXTS.attendanceList;
+            }
+
+            /**
+             * Updates analytics metrics
+             */
+            updateAnalytics() {
+                const today = new Date().toLocaleDateString('id-ID');
+                const todayScans = this.attendance.filter(s => s.time.startsWith(today)).length;
+                const lastScan = this.attendance.length > 0 ? 
+                    this.attendance[this.attendance.length - 1].time : '-';
+
+                this.elements.totalAttendance.textContent = this.attendance.length;
+                this.elements.todayScans.textContent = todayScans;
+                this.elements.lastScan.textContent = lastScan;
+                this.chart.update(this.attendance);
+            }
+
+            /**
+             * Loads and displays attendance list
+             */
+            loadAttendance() {
+                while (this.elements.attendanceList.firstChild && 
+                       this.elements.attendanceList.firstChild !== this.elements.emptyMessage) {
+                    this.elements.attendanceList.removeChild(this.elements.attendanceList.firstChild);
+                }
+
+                const filterValue = this.elements.searchInput.value.toLowerCase();
+                this.attendance
+                    .filter(student => student.id.toLowerCase().includes(filterValue))
+                    .forEach((student, index) => {
+                        const li = document.createElement('li');
+                        li.className = 'attendance-item py-6 px-8 flex justify-between items-center';
+                        li.setAttribute('role', 'listitem');
+                        li.innerHTML = `
+                            <div>
+                                <p class="text-white font-semibold text-xl">${student.id}</p>
+                                <p class="text-gray-400 text-sm">${student.time}</p>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <span class="bg-green-900 text-green-200 text-sm px-4 py-2 rounded-full font-medium">${student.status}</span>
+                                <span class="bg-gray-700 text-gray-200 text-sm px-4 py-2 rounded-full">#${index + 1}</span>
+                            </div>
+                        `;
+                        this.elements.attendanceList.appendChild(li);
+                    });
+
+                this.elements.emptyMessage.classList.toggle('hidden', this.attendance.length > 0);
+                this.updateAnalytics();
+            }
+
+            /**
+             * Adds a student to attendance
+             * @param {string} studentId - Student ID
+             * @returns {boolean} Success status
+             */
+            addStudentAttendance(studentId) {
+                if (this.attendance.some(student => student.id === studentId)) {
+                    this.showScanStatus('error', TEXTS.scanError.replace('{id}', studentId), 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                    return false;
+                }
+
+                const newStudent = {
+                    id: studentId,
+                    time: formatDateTime(new Date()),
+                    status: 'Hadir'
+                };
+
+                this.attendance.push(newStudent);
+                Storage.save(this.attendance);
+                this.showScanStatus('success', TEXTS.scanSuccess.replace('{id}', studentId), 'success-flash');
+                try {
+                    this.elements.successSound.play();
+                } catch (error) {
+                    console.warn('Gagal memutar suara sukses:', error);
+                }
+                this.loadAttendance();
+                return true;
+            }
+
+            /**
+             * Displays a status message
+             * @param {'success' | 'error'} type - Message type
+             * @param {string} message - Message text
+             * @param {string} animation - Animation class
+             */
+            showScanStatus(type, message, animation) {
+                this.elements.scanStatus.textContent = message;
+                this.elements.scanStatus.className = `mt-8 text-center p-6 rounded-2xl shadow-lg ${animation}`;
+                this.elements.scanStatus.classList.remove('hidden');
+                this.elements.scanStatus.classList.add(type === 'success' ? 
+                    'bg-green-900 text-green-200' : 
+                    'bg-red-900 text-red-200');
+
+                setTimeout(() => {
+                    this.elements.scanStatus.classList.add('hidden');
+                }, 3500);
+            }
+
+            /**
+             * Resets all attendance data
+             */
+            resetAttendance() {
+                if (confirm('Yakin ingin menghapus semua data presensi?')) {
+                    this.attendance = [];
+                    Storage.save(this.attendance);
+                    this.loadAttendance();
+                    this.showScanStatus('success', TEXTS.resetSuccess, 'success-flash');
+                    try {
+                        this.elements.successSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara sukses:', error);
+                    }
+                }
+            }
+
+            /**
+             * Starts the QR scanner
+             * @returns {Promise<void>}
+             */
+            async startScanner() {
+                try {
+                    const devices = await Html5Qrcode.getCameras();
+                    if (devices && devices.length) {
+                        await this.html5QrCode.start(
+                            { facingMode: this.currentCamera },
+                            QR_CONFIG,
+                            (decodedText) => this.addStudentAttendance(decodedText),
+                            (error) => console.warn(`Kesalahan pemindaian QR: ${error}`)
+                        );
+                    } else {
+                        throw new Error('Tidak ada kamera yang ditemukan.');
+                    }
+                } catch (err) {
+                    this.showScanStatus('error', TEXTS.cameraError, 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                }
+            }
+
+            /**
+             * Switches camera
+             * @returns {Promise<void>}
+             */
+            async switchCamera() {
+                try {
+                    await this.html5QrCode.stop();
+                    this.currentCamera = this.currentCamera === 'environment' ? 'user' : 'environment';
+                    await this.startScanner();
+                    this.showScanStatus('success', 'Kamera berhasil diganti.', 'success-flash');
+                    try {
+                        this.elements.successSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara sukses:', error);
+                    }
+                } catch (err) {
+                    this.showScanStatus('error', 'Gagal mengganti kamera.', 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                }
+            }
+
+            /**
+             * Adjusts camera zoom
+             * @param {number} delta - Zoom adjustment
+             * @returns {Promise<void>}
+             */
+            async adjustZoom(delta) {
+                this.zoomLevel = Math.max(1, Math.min(this.zoomLevel + delta, 2));
+                try {
+                    await this.html5QrCode.stop();
+                    await this.html5QrCode.start(
+                        { facingMode: this.currentCamera },
+                        { ...QR_CONFIG, zoom: this.zoomLevel },
+                        (decodedText) => this.addStudentAttendance(decodedText),
+                        (error) => console.warn(`Kesalahan pemindaian QR: ${error}`)
+                    );
+                    this.showScanStatus('success', `Zoom disesuaikan ke ${this.zoomLevel.toFixed(1)}x.`, 'success-flash');
+                    try {
+                        this.elements.successSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara sukses:', error);
+                    }
+                } catch (err) {
+                    this.showScanStatus('error', 'Gagal menyesuaikan zoom.', 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                }
+            }
+
+            /**
+             * Shows export options and handles export
+             */
+            showExportOptions() {
+                const format = prompt('Pilih format ekspor (csv/json):', 'csv')?.toLowerCase();
+                if (format === 'csv') {
+                    const csv = [
+                        'ID Siswa,Waktu,Status',
+                        ...this.attendance.map(s => `${s.id},${s.time},${s.status}`)
+                    ].join('\n');
+                    downloadFile(csv, `presensi_${new Date().toLocaleDateString('id-ID')}.csv`, 'text/csv');
+                    this.showScanStatus('success', 'Data berhasil diekspor sebagai CSV.', 'success-flash');
+                    try {
+                        this.elements.successSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara sukses:', error);
+                    }
+                } else if (format === 'json') {
+                    const json = JSON.stringify(this.attendance, null, 2);
+                    downloadFile(json, `presensi_${new Date().toLocaleDateString('id-ID')}.json`, 'application/json');
+                    this.showScanStatus('success', 'Data berhasil diekspor sebagai JSON.', 'success-flash');
+                    try {
+                        this.elements.successSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara sukses:', error);
+                    }
+                } else {
+                    this.showScanStatus('error', TEXTS.exportError, 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                }
+            }
+
+            /**
+             * Simulates data synchronization with a backend
+             * @returns {Promise<void>}
+             */
+            async syncData() {
+                if (!this.isOnline) {
+                    this.showScanStatus('error', 'Tidak ada koneksi internet.', 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                    return;
+                }
+
+                try {
+                    // Simulate API call
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    this.showScanStatus('success', TEXTS.syncSuccess, 'success-flash');
+                    try {
+                        this.elements.successSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara sukses:', error);
+                    }
+                } catch (err) {
+                    this.showScanStatus('error', TEXTS.syncError, 'error-flash');
+                    try {
+                        this.elements.errorSound.play();
+                    } catch (error) {
+                        console.warn('Gagal memutar suara error:', error);
+                    }
+                }
+            }
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                new AttendanceApp();
+            } catch (error) {
+                console.error('Gagal menginisialisasi aplikasi:', error);
+            }
+        });
+    </script>
+</body>
+</html>
